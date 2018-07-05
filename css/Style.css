@@ -20,5 +20,60 @@
     bottom: 20px;
     z-index: 2;
 
-    border: solid white;
+    border: 6px solid white;
+}
+
+#transbox
+{
+    margin: 30px;
+    background-color: #000000;
+    border: 6px solid white;
+    opacity: 0.6;
+    filter: alpha(opacity=60);
+
+    position: absolute;
+    bottom: 0;
+    right: 0%;
+    transform: translateX(0%);
+}
+
+#transbox div
+{
+    width: 260px;
+    text-align: left;
+    position: relative;
+    margin: 3px;
+    font-weight: bold;
+    font-family: Helvetica;
+    color: #ffffff;
+}
+
+#scorebox {
+    margin: 30px;
+    background-color: #000000;
+    border: 6px solid white;
+    opacity: 0.6;
+    filter: alpha(opacity=60);
+
+    position: absolute;
+    top: 0;
+    right: 0%;
+    transform: translateX(0%);
+}
+
+#scorebox div {
+    width: 260px;
+    text-align: left;
+    position: relative;
+    margin: 3px;
+    font-size: 20pt;
+    font-weight: bold;
+    font-family: Helvetica;
+    color: #ffffff;
+}
+
+#scorebox div .red {
+    text-align: right;
+    font-weight: bolder;
+    color: #D50000;
 }

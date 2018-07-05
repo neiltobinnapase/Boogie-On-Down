@@ -46,9 +46,11 @@ var level = [
     'WWWWWWWWWWWWWWWWWWWWWWWWWWWW'
 ];
 
+//Loads up sounds used in game
 var getPellet, getPower;
 var win;
 var lose;
+var boogie;
 function loadSounds()
 {
     getPellet = new Audio("sounds/getPellet.mp3");
@@ -60,10 +62,28 @@ function loadSounds()
     win.volume = .4;
     lose = new Audio("sounds/lose.mp3");
     lose.volume = .4;
+
+    boogie = new Audio("sounds/boogie.mp3");
+    boogie.volume = .6;
+    boogie.loop = true;
+    boogie.play();
 }
 
+//Loads the textures before continuing initialization of game
+function init(){
+    var loader = new THREE.TextureLoader();
+    loader.load('images/disco.jpg', function (texture){
+        discoTexture = texture;
 
-function init()
+        (new THREE.FontLoader()).load("fonts/Boogie Nights.json", function (fontfun){
+            discoFont = fontfun;
+            continueInit();
+        });
+    });
+}
+
+//Initializes game
+function continueInit()
 {
     scene = new THREE.Scene();
 
@@ -73,49 +93,68 @@ function init()
     addCameras();
     addSpotlight();
 
+    //Creates array that holds locations of pellets and power pellets
     createPelletArray();
     createPowerArray();
 
+    //3D text
+    addText();
+
+    //Texture plane where objects move and are positioned
+    //Map is created for object traversal
     addGroundplane();
     createMap();
 
+    //One player and 4 enemies are placed into the scene
     addPlayer();
-    addEnemy1();
-    addEnemy2();
-    addEnemy3();
-    addEnemy4();
+    addEnemies();
 
+    //Values used for score, music, and camera modes
+    musicPlaying = true;
+    isFollowingPlayer = true;
+    currentScore = 0;
+    highScore = 0;
+
+    //Allows for window resize; scene will scale when window size changes
+	window.addEventListener('resize', onResize, false);
+
+    //Separates main renderer and HUDrenderer into separate divs in index.html
     var container = document.getElementById("MainView");
     container.appendChild(renderer.domElement);
 
     var HUDcontainer = document.getElementById("HUDView");
     HUDcontainer.appendChild(HUDrenderer.domElement);
 
-
-    new THREE.OrbitControls(camera, renderer.domElement);
-
     render();
 }
 
+//Renders the game
 function render()
 {
+    //Spotlight changes intensity based on time interval
     maintainSpotlight();
 
+    //Camera will follow player based on certain mode
     maintainPlayerMovement();
     maintainCameraMovement();
+    cameraCheck();
 
-    maintainEnemy1Movement();
-    maintainEnemy2Movement();
-    maintainEnemy3Movement();
-    maintainEnemy4Movement();
+    //Enemies will traverse through the map
+    maintainEnemyMovement();
 
+    //Check if song should be playing or not
+    checkMusic();
 
+    //Player position used for determining collisions with walls,
+    //enemies, and pellets
     checkPlayerPosition();
     checkPellet();
     checkPower();
 
+    //Will reset when key is perssed
     handleReset();
 
+    //Separates renderer and HUDrenderer when rendering the animation
     renderer.setViewport(0, 0, window.innerWidth, window.innerHeight);
     renderer.setScissor(0, 0, window.innerWidth, window.innerHeight);
     renderer.render(scene, camera);
@@ -136,6 +175,9 @@ function handleReset()
     }
 }
 
+//Removes map, player, and enemies and adds them all back.
+//Resets arrays holding pellets and power pellets, and original camera position
+//Resets current score
 function reset()
 {
     scene.remove(player);
@@ -155,7 +197,12 @@ function reset()
     createPelletArray();
     createPowerArray();
 
+    cameradist = -40;
+    cameraheight = 50;
     camera.position.set(0, -(maplength / 3.85) + cameradist, cameraheight);
+    isFollowingPlayer = true;
+    camera.lookAt(player.position);
+    camera.updateProjectionMatrix();
 
     createMap();
 
@@ -169,6 +216,9 @@ function reset()
     direction2 = Math.round(Math.random() * 10) % 4;
     direction3 = Math.round(Math.random() * 10) % 4;
     direction4 = Math.round(Math.random() * 10) % 4;
+
+    currentScore = 0;
+    updateScore();
 }
 
 function addRenderers()
@@ -198,7 +248,15 @@ function addCameras()
     HUDcamera.position.z = 175;
     HUDcamera.lookAt(new THREE.Vector3(0, 0, 0));
 
-    scene.add(new THREE.CameraHelper(HUDcamera));
+    //scene.add(new THREE.CameraHelper(HUDcamera));
+}
+
+	//Allows for window resize scaling
+function onResize() 
+{
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
+	renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
 function addSpotlight()
@@ -222,10 +280,11 @@ function addSpotlight()
     spotLight.castShadow = true;
     scene.add(spotLight);
 
-    var ambientLight = new THREE.AmbientLight(0xffffff, 0.1);
+    var ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
     scene.add(ambientLight);
 }
 
+//Will switch spotlight intensity based on time interval
 var switchSpotlight = true;
 function maintainSpotlight()
 {
@@ -233,26 +292,58 @@ function maintainSpotlight()
         setTimeout(function() {
             spotLight.intensity = 1.5;
             switchSpotlight = false; 
-        }, 1500);
+        }, 855);
     }
     else{
         setTimeout(function() {
             spotLight.intensity = .95;
             switchSpotlight = true; 
-        }, 1500);
+        }, 855);
+    }
+}
+
+//Updates score on index.html, when all pellets are collected, play a victory sound
+var currentScore, highScore;
+function updateScore()
+{
+    document.querySelector('#score').innerHTML = currentScore;
+    if(highScore <= currentScore){
+        highScore = currentScore;
+        document.querySelector('#highScore').innerHTML = highScore;
+    }
+
+    if(currentScore >= 28000){
+        win.play();
+    }
+}
+
+//Toggles music
+var musicPlaying;
+function checkMusic()
+{
+    if(Key.isDown(Key.M)){
+        if(musicPlaying){
+            musicPlaying = false;
+            boogie.pause();
+        }
+        else{
+            musicPlaying = true;
+            boogie.play();
+        }
     }
 }
 
 function addPlayer()
 {
     var playerGeometry = new THREE.CylinderGeometry(.1, 3, 6, 32);
-    var playerMaterial = new THREE.MeshLambertMaterial({color:'white'});
+    var playerMaterial = new THREE.MeshLambertMaterial({color:0xBA68C8});
     
     player = new THREE.Mesh(playerGeometry, playerMaterial);
     player.position.set(0, -(maplength/3.85), 0);
     scene.add(player);
 }
 
+//Player position used for determining location within level array
 var playerX, playerY;
 function checkPlayerPosition()
 {
@@ -260,7 +351,7 @@ function checkPlayerPosition()
     playerY = -(Math.round((player.position.y - maplength/2 + 2)/(maplength/31) + maplength/62) - 5);
 }
 
-
+//Movement from up, down, left, and right when certain key is pressed
 function maintainPlayerMovement()
 {
     var time = performance.now();
@@ -273,8 +364,6 @@ function maintainPlayerMovement()
 
     if(Key.isDown(Key.A))
     {
-       // player.rotation.z += perframe * 0.05;
-       
        if(level[playerY].charAt(playerX - 1) === 'W'){
             player.rotation.z = Math.PI/2;
             player.position.x += 0;
@@ -288,14 +377,9 @@ function maintainPlayerMovement()
 
     else if(Key.isDown(Key.D))
     {
-       // player.rotation.z -= perframe * 0.05;
-
        if(level[playerY].charAt(playerX) == 'W'){
            player.rotation.z = -Math.PI/2;
            player.position.x += 0;
-
-           console.log("playerX:" + (playerX));
-           console.log("playerY:" + playerY);
        }
        else {
            player.rotation.z = -Math.PI/2;
@@ -305,11 +389,6 @@ function maintainPlayerMovement()
 
     else if(Key.isDown(Key.W))
     {
-        // var deltaX = perframe * Math.sin(player.rotation.z)*.3;
-        // var deltaY =perframe *  Math.cos(player.rotation.z)*.3;
-        // player.position.x -= deltaX;
-        // player.position.y += deltaY;
-
         if(level[playerY - 1].charAt(playerX) == 'W'){
             player.rotation.z = 0;
             player.position.y += 0;            
@@ -322,11 +401,6 @@ function maintainPlayerMovement()
 
     else if(Key.isDown(Key.S))
     {
-        // var deltaX = perframe * Math.sin(player.rotation.z)*.3;
-        // var deltaY = perframe * Math.cos(player.rotation.z)*.3;
-        // player.position.x += deltaX;
-        // player.position.y -= deltaY;
-
         if(level[playerY].charAt(playerX) == 'W'){
             player.rotation.z = -Math.PI;
             player.position.y += 0;
@@ -340,15 +414,93 @@ function maintainPlayerMovement()
     prevTime = time;
 }
 
+//Camera will follow player based on camera mode
 function maintainCameraMovement()
 {
-    camera.position.x = player.position.x;
-    camera.position.y = player.position.y + cameradist;
-    camera.position.z = player.position.z + cameraheight;
-
-    camera.lookAt(player.position);
+    if(isFollowingPlayer){
+        camera.position.x = player.position.x;
+        camera.position.y = player.position.y + cameradist;
+        camera.position.z = player.position.z + cameraheight;
+    
+        camera.lookAt(player.position);
+    }
 }
 
+//Based on key press, camera angle will change
+var isFollowingPlayer;
+function cameraCheck()
+{
+    if(Key.isDown(Key._1)){
+        cameradist = -40;
+        cameraheight = 50;
+
+        camera.position.x = player.position.x;
+        camera.position.y = player.position.y + cameradist;
+        camera.position.z = player.position.z + cameraheight;
+        camera.lookAt(player.position);
+        camera.updateProjectionMatrix();
+        isFollowingPlayer = true;
+    }
+    
+    if(Key.isDown(Key._2)){
+        cameradist = -20;
+        cameraheight = 30;
+
+        camera.position.x = player.position.x;
+        camera.position.y = player.position.y + cameradist;
+        camera.position.z = player.position.z + cameraheight;
+        camera.lookAt(player.position);
+        camera.updateProjectionMatrix();
+        isFollowingPlayer = true;
+    }
+
+    if(Key.isDown(Key._3)){
+        camera.position.set(0, -200, 525);
+        camera.lookAt(scene.position);
+        camera.updateProjectionMatrix();
+        isFollowingPlayer = false;
+    }
+}
+
+//Adds 3D text to the scene
+var discoFont;
+function addText()
+{
+    var topString = "Let's Boogie!";
+
+    var textMaterial = new THREE.MeshLambertMaterial({color:'white'});
+    var topGeometry = new THREE.TextGeometry(topString, {
+        font: discoFont,
+
+        size: 25,
+        height: 10,
+
+        bevelEnabled: false,
+    });
+
+    var top = new THREE.Mesh(topGeometry, textMaterial);
+    top.position.set(-112.5, 160, 0);
+
+    scene.add(top);
+
+    var bottomString = "Have Fun!";
+
+    var bottomGeometry = new THREE.TextGeometry(bottomString, {
+        font: discoFont,
+
+        size: 25,
+        height: 10,
+
+        bevelEnabled: false,
+    });
+
+    var bottom = new THREE.Mesh(bottomGeometry, textMaterial);
+    bottom.position.set(-95, -195, 0);
+
+    scene.add(bottom);
+}
+
+//Creates textured ground plane where objects are placed and move in
 var groundPlane;
 var mapwidth = 280, maplength = 310;
 function addGroundplane()
@@ -373,6 +525,7 @@ function addGroundplane()
     });
 }
 
+//Creates level based on level array, scaled to the size of the ground plane
 function createMap()
 {
     for(var row = 0; row < level.length; row++){
@@ -383,25 +536,24 @@ function createMap()
                     addWall(column*(mapwidth/28) + (mapwidth/56), -row*(maplength/31) - (maplength/62), 1);
                     break;
                 case '-':
-                    addPellet(column, row, .5);
+                    addPellet(column, row, 1);
                     break;
                 case '=':
-                    addPower(column, row, 1);
+                    addPower(column, row, 1.5);
                     break;
             }
         }
     }
 }
 
+//Array that holds references to all objects placed on map. Used for removing them in reset.
 var hold = [];
 function addWall(x, y, z)
 {
     var wallGeometry = new THREE.BoxGeometry(mapwidth/28, maplength/31, 6);
-    var wallMaterial = new THREE.MeshLambertMaterial({color: 'blue'});
+    var wallMaterial = new THREE.MeshLambertMaterial({color: 0xFF9100});
 
     var Wall = new THREE.Mesh(wallGeometry, wallMaterial);
-    //Wall.receiveShadow = true;
-    //Wall.castShadow = true;
 
     hold.push(Wall);
 
@@ -410,13 +562,14 @@ function addWall(x, y, z)
     Wall.position.y += maplength/2 - 2;
     scene.add(Wall);
 
+    //Top wall randomly generates values for different colors to be placed on top of base wall
     var r = Math.floor( Math.random() * 255 );
     var g = Math.floor( Math.random() * 255 );
     var b = Math.floor( Math.random() * 255 );
     var color = r * 65536 + g * 256 + b;
 
-    var topWallGeometry = new THREE.BoxGeometry(mapwidth/56, maplength/62, 9);
-    var topWallMaterial = new THREE.MeshLambertMaterial({color: color});
+    var topWallGeometry = new THREE.BoxGeometry(mapwidth/56, maplength/62, 5.1);
+    var topWallMaterial = new THREE.MeshBasicMaterial({color: color});
 
     var topWall = new THREE.Mesh(topWallGeometry, topWallMaterial);
 
@@ -428,6 +581,7 @@ function addWall(x, y, z)
     scene.add(topWall);
 }
 
+//PelletArray holds location of all pellets placed on map
 var PelletArray = new Array(31);
 function createPelletArray()
 {
@@ -438,12 +592,10 @@ function createPelletArray()
 
 function addPellet(x, y, z)
 {
-    var pelletGeometry = new THREE.SphereGeometry(1, 32, 32);
-    var pelletMaterial = new THREE.MeshPhongMaterial({color: 'red'});
+    var pelletGeometry = new THREE.SphereGeometry(1.5, 32, 32);
+    var pelletMaterial = new THREE.MeshPhongMaterial({color: 0x00B0FF});
 
     var pellet = new THREE.Mesh(pelletGeometry, pelletMaterial);
-    //pellet.receiveShadow = true;
-    //pellet.castShadow = true;
 
     PelletArray[y][x] = pellet;
     hold.push(pellet);
@@ -454,15 +606,19 @@ function addPellet(x, y, z)
     scene.add(pellet);
 }
 
+//If player is on the same location as a pellet, remove pellet and increase score
 function checkPellet()
 {
     if(PelletArray[playerY][playerX]){
+        currentScore += 100;
+        updateScore();
         getPellet.play();
         scene.remove(PelletArray[playerY][playerX]);
         PelletArray[playerY][playerX] = null;
     }
 }
 
+//PowerArray holds locations of all power pellets on the map
 var PowerArray = new Array(31);
 function createPowerArray()
 {
@@ -471,10 +627,11 @@ function createPowerArray()
     }
 }
 
+var discoTexture;
 function addPower(x, y, z)
 {
-    var powerGeometry = new THREE.SphereGeometry(1.75, 32, 32);
-    var powerMaterial = new THREE.MeshPhongMaterial({color: 'yellow'});
+    var powerGeometry = new THREE.SphereGeometry(2.75, 32, 32);
+    var powerMaterial = new THREE.MeshPhongMaterial({map: discoTexture});
 
     var power = new THREE.Mesh(powerGeometry, powerMaterial);
 
@@ -484,23 +641,37 @@ function addPower(x, y, z)
     power.position.set(x*(mapwidth/28) + (mapwidth/56), -y*(maplength/31) - (maplength/62), z);
     power.position.x -= mapwidth/2;
     power.position.y += maplength/2 - 2;
+
+    power.rotation.x = Math.PI/2;
     scene.add(power);
 }
 
+//If player is on the same location as a power pellet, remove and update score
 function checkPower()
 {
     if(PowerArray[playerY][playerX]){
+        currentScore += 1000;
+        updateScore();
         getPower.play();
         scene.remove(PowerArray[playerY][playerX]);
         PowerArray[playerY][playerX] = null;
     }
 }
 
+//All enemies are placed in the 4 corners of the map
+function addEnemies()
+{
+    addEnemy1();
+    addEnemy2();
+    addEnemy3();
+    addEnemy4();
+}
+
 var Enemy1, Enemy2, Enemy3, Enemy4;
 function addEnemy1()
 {
     var EnemyGeometry = new THREE.SphereGeometry(3, 32, 32);
-    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 'pink'});
+    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 0x212121});
 
     Enemy1 = new THREE.Mesh(EnemyGeometry, EnemyMaterial);
 
@@ -512,7 +683,7 @@ function addEnemy1()
 function addEnemy2()
 {
     var EnemyGeometry = new THREE.SphereGeometry(3, 32, 32);
-    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 'pink'});
+    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 0x212121});
 
     Enemy2 = new THREE.Mesh(EnemyGeometry, EnemyMaterial);
 
@@ -524,7 +695,7 @@ function addEnemy2()
 function addEnemy3()
 {
     var EnemyGeometry = new THREE.SphereGeometry(3, 32, 32);
-    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 'pink'});
+    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 0x212121});
 
     Enemy3 = new THREE.Mesh(EnemyGeometry, EnemyMaterial);
 
@@ -536,7 +707,7 @@ function addEnemy3()
 function addEnemy4()
 {
     var EnemyGeometry = new THREE.SphereGeometry(3, 32, 32);
-    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 'pink'});
+    var EnemyMaterial = new THREE.MeshLambertMaterial({color: 0x212121});
 
     Enemy4 = new THREE.Mesh(EnemyGeometry, EnemyMaterial);
 
@@ -545,19 +716,32 @@ function addEnemy4()
     scene.add(Enemy4);
 }
 
+//When enemy meets a wall, choose a different direction to move in
+//If player is in the same position as an enemy, reset the game
+function maintainEnemyMovement()
+{
+    maintainEnemy1Movement();
+    maintainEnemy2Movement();
+    maintainEnemy3Movement();
+    maintainEnemy4Movement();
+}
+
 var direction1 = Math.round(Math.random()*10) % 4;
 function maintainEnemy1Movement()
 {
     var EnemyX = Math.round((Enemy1.position.x + mapwidth/2)/(mapwidth/28) - mapwidth/56 ) + 5;
     var EnemyY = -(Math.round((Enemy1.position.y - maplength/2 + 2)/(maplength/31) + maplength/62) - 5);
 
+    var velocity = 0.4;
+
     if(direction1 == 0)
     {  
        if(level[EnemyY].charAt(EnemyX - 1) === 'W'){
+            Enemy1.position.x += velocity;
             direction1 = Math.round(Math.random()*10) % 4;
        }
        else {
-            Enemy1.position.x -= 0.8;
+            Enemy1.position.x -= velocity;
        }
 
     }
@@ -565,30 +749,33 @@ function maintainEnemy1Movement()
     else if(direction1 == 1)
     {
        if(level[EnemyY].charAt(EnemyX) == 'W'){
-           direction1 = Math.round(Math.random()*10) % 4;
+            Enemy1.position.x -= velocity;
+            direction1 = Math.round(Math.random()*10) % 4;
        }
        else {
-           Enemy1.position.x += 0.8;
+            Enemy1.position.x += velocity;
        }
     }
 
     else if(direction1 == 2)
     {
         if(level[EnemyY - 1].charAt(EnemyX) == 'W'){
+            Enemy1.position.y -= velocity;
             direction1 = Math.round(Math.random()*10) % 4;        
         }
         else{
-            Enemy1.position.y += 0.8;
+            Enemy1.position.y += velocity;
         }
     }
 
     else if(direction1 == 3)
     {
         if(level[EnemyY].charAt(EnemyX) == 'W'){
+            Enemy1.position.y += velocity;
             direction1 = Math.round(Math.random()*10) % 4;
         }
         else{
-            Enemy1.position.y -= 0.8;
+            Enemy1.position.y -= velocity;
         }
     }
 
@@ -606,13 +793,16 @@ function maintainEnemy2Movement()
     var EnemyX = Math.round((Enemy2.position.x + mapwidth/2)/(mapwidth/28) - mapwidth/56 ) + 5;
     var EnemyY = -(Math.round((Enemy2.position.y - maplength/2 + 2)/(maplength/31) + maplength/62) - 5);
 
+    velocity = 0.45;
+
     if(direction2 == 0)
     {  
        if(level[EnemyY].charAt(EnemyX - 1) === 'W'){
+            Enemy2.position.x += velocity;
             direction2 = Math.round(Math.random()*10) % 4;
        }
        else {
-            Enemy2.position.x -= 0.9;
+            Enemy2.position.x -= velocity;
        }
 
     }
@@ -620,30 +810,33 @@ function maintainEnemy2Movement()
     else if(direction2 == 1)
     {
        if(level[EnemyY].charAt(EnemyX) == 'W'){
+           Enemy2.position.x -= velocity;
            direction2 = Math.round(Math.random()*10) % 4;
        }
        else {
-           Enemy2.position.x += 0.9;
+           Enemy2.position.x += velocity;
        }
     }
 
     else if(direction2 == 2)
     {
         if(level[EnemyY - 1].charAt(EnemyX) == 'W'){
+            Enemy2.position.y -= velocity;
             direction2 = Math.round(Math.random()*10) % 4;        
         }
         else{
-            Enemy2.position.y += 0.9;
+            Enemy2.position.y += velocity;
         }
     }
 
     else if(direction2 == 3)
     {
         if(level[EnemyY].charAt(EnemyX) == 'W'){
+            Enemy2.position.y += velocity;
             direction2 = Math.round(Math.random()*10) % 4;
         }
         else{
-            Enemy2.position.y -= 0.9;
+            Enemy2.position.y -= velocity;
         }
     }
 
@@ -661,13 +854,16 @@ function maintainEnemy3Movement()
     var EnemyX = Math.round((Enemy3.position.x + mapwidth/2)/(mapwidth/28) - mapwidth/56 ) + 5;
     var EnemyY = -(Math.round((Enemy3.position.y - maplength/2 + 2)/(maplength/31) + maplength/62) - 5);
 
+    velocity = 0.4;
+
     if(direction3 == 0)
     {  
        if(level[EnemyY].charAt(EnemyX - 1) === 'W'){
+            Enemy3.position.x += velocity;
             direction3 = Math.round(Math.random()*10) % 4;
        }
        else {
-            Enemy3.position.x -= 0.8;
+            Enemy3.position.x -= velocity;
        }
 
     }
@@ -675,30 +871,33 @@ function maintainEnemy3Movement()
     else if(direction3 == 1)
     {
        if(level[EnemyY].charAt(EnemyX) == 'W'){
+           Enemy3.position.x -= velocity;
            direction3 = Math.round(Math.random()*10) % 4;
        }
        else {
-           Enemy3.position.x += 0.8;
+           Enemy3.position.x += velocity;
        }
     }
 
     else if(direction3 == 2)
     {
         if(level[EnemyY - 1].charAt(EnemyX) == 'W'){
+            Enemy3.position.y -= velocity;
             direction3 = Math.round(Math.random()*10) % 4;        
         }
         else{
-            Enemy3.position.y += 0.8;
+            Enemy3.position.y += velocity;
         }
     }
 
     else if(direction3 == 3)
     {
         if(level[EnemyY].charAt(EnemyX) == 'W'){
+            Enemy3.position.y += velocity;
             direction3 = Math.round(Math.random()*10) % 4;
         }
         else{
-            Enemy3.position.y -= 0.8;
+            Enemy3.position.y -= velocity;
         }
     }
 
@@ -716,13 +915,16 @@ function maintainEnemy4Movement()
     var EnemyX = Math.round((Enemy4.position.x + mapwidth/2)/(mapwidth/28) - mapwidth/56 ) + 5;
     var EnemyY = -(Math.round((Enemy4.position.y - maplength/2 + 2)/(maplength/31) + maplength/62) - 5);
 
+    velocity = 0.3;
+
     if(direction4 == 0)
     {  
        if(level[EnemyY].charAt(EnemyX - 1) === 'W'){
+            Enemy4.position.x += velocity;
             direction4 = Math.round(Math.random()*10) % 4;
        }
        else {
-            Enemy4.position.x -= 0.6;
+            Enemy4.position.x -= velocity;
        }
 
     }
@@ -730,30 +932,33 @@ function maintainEnemy4Movement()
     else if(direction4 == 1)
     {
        if(level[EnemyY].charAt(EnemyX) == 'W'){
+           Enemy4.position.x -= velocity;
            direction4 = Math.round(Math.random()*10) % 4;
        }
        else {
-           Enemy4.position.x += 0.6
+           Enemy4.position.x += velocity;
        }
     }
 
     else if(direction4 == 2)
     {
         if(level[EnemyY - 1].charAt(EnemyX) == 'W'){
+            Enemy4.position.y -= velocity;
             direction4 = Math.round(Math.random()*10) % 4;        
         }
         else{
-            Enemy4.position.y += 0.6;
+            Enemy4.position.y += velocity;
         }
     }
 
     else if(direction4 == 3)
     {
         if(level[EnemyY].charAt(EnemyX) == 'W'){
+            Enemy4.position.y += velocity;
             direction4 = Math.round(Math.random()*10) % 4;
         }
         else{
-            Enemy4.position.y -= 0.6;
+            Enemy4.position.y -= velocity;
         }
     }
 
